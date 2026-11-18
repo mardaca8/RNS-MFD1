@@ -60,8 +60,8 @@ install_packages() {
     echo "Installing packages..."
     apt-get update
     apt-get install -y \
-        python3-can python3-evdev can-utils alsa-utils bluez bluez-firmware pi-bluetooth hostapd rfkill \
-        gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
+        python3-can python3-evdev can-utils alsa-utils bluez bluez-firmware bluez-tools bluez-alsa-utils pi-bluetooth hostapd rfkill \
+        gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
         build-essential cmake ninja-build pkg-config git file dpkg-dev fakeroot \
         libboost-all-dev libprotobuf-dev protobuf-compiler libusb-1.0-0-dev libssl-dev libabsl-dev \
         libblkid-dev libgps-dev libtag1-dev librtaudio-dev \
@@ -273,6 +273,18 @@ configure_bluetooth() {
     sed -i 's/^#\?AutoEnable=.*/AutoEnable=true/' /etc/bluetooth/main.conf
     grep -q '^AutoEnable=' /etc/bluetooth/main.conf || sed -i '/^\[Policy\]/a AutoEnable=true' /etc/bluetooth/main.conf
     sed -i 's/^#\? \?DiscoverableTimeout *=.*/DiscoverableTimeout = 0/' /etc/bluetooth/main.conf
+    sed -i 's/^#\? \?AlwaysPairable *=.*/AlwaysPairable = true/' /etc/bluetooth/main.conf
+    sed -i 's/^#\? \?JustWorksRepairing *=.*/JustWorksRepairing = always/' /etc/bluetooth/main.conf
+    # Classic Bluetooth only (else BlueZ may try LE), and look like car audio to the phone
+    sed -i 's/^#\? \?ControllerMode *=.*/ControllerMode = bredr/' /etc/bluetooth/main.conf
+    sed -i 's/^#\? \?Class *=.*/Class = 0x200408/' /etc/bluetooth/main.conf
+    grep -q '^Class' /etc/bluetooth/main.conf || sed -i '/^\[General\]/a Class = 0x200408' /etc/bluetooth/main.conf
+
+    # The phone only starts wireless Android Auto after a hands-free connection
+    # (also carries call audio). bluez-alsa provides HFP/HSP; no A2DP, media goes via Android Auto.
+    mkdir -p /etc/systemd/system/bluealsa.service.d
+    printf '[Service]\nExecStart=\nExecStart=/usr/bin/bluealsa -S -p hfp-hf -p hsp-hs\n' > /etc/systemd/system/bluealsa.service.d/rns.conf
+    systemctl disable bluealsa-aplay.service 2> /dev/null
     rfkill unblock bluetooth
 
     cat > /usr/local/bin/rns-bt-ready << 'EOF'
@@ -303,7 +315,29 @@ WorkingDirectory=/etc/openauto
 ExecStartPre=/usr/local/bin/rns-bt-ready
 Restart=always
 EOF
-    green "     Bluetooth (hciuart, wait for hci0, always discoverable) configured. ✅"
+    # btservice registers no pairing agent, so without one BlueZ rejects the
+    # phone's passkey ("incorrect PIN"). NoInputNoOutput = accept without a PIN.
+    cat > /etc/systemd/system/rns-bt-agent.service << 'EOF'
+[Unit]
+Description=Bluetooth pairing agent (accept phone without PIN)
+Requires=bluetooth.service
+After=bluetooth.service openauto-btservice.service
+
+[Service]
+ExecStartPre=/usr/local/bin/rns-bt-ready
+ExecStartPre=/usr/bin/bluetoothctl pairable on
+ExecStartPre=/usr/bin/bluetoothctl discoverable on
+ExecStart=/usr/bin/bt-agent --capability=NoInputNoOutput
+Restart=always
+RestartSec=5
+KillSignal=SIGUSR1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable bluealsa.service rns-bt-agent.service
+    green "     Bluetooth (hciuart, wait for hci0, pairing agent, always discoverable) configured. ✅"
 }
 
 configure_openauto() {

@@ -83,6 +83,7 @@ class OpenautoIniTest(unittest.TestCase):
         self.assertEqual(ini.get("Video", "Resolution"), "1")
         self.assertEqual(ini.get("Input", "EnableTouchscreen"), "false")
         self.assertEqual(ini.get("Input", "ScrollWheelButton"), "true")
+        self.assertEqual(ini.get("Audio", "OutputBackendType"), "1")
 
 
 if __name__ == "__main__":
