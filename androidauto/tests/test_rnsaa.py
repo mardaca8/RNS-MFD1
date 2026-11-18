@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from rnsaa import config  # noqa: E402
 from rnsaa.keys import ACTIONS  # noqa: E402
 from rnsaa.mfd import ButtonDecoder, TunerEmulator  # noqa: E402
+from rnsaa.terminal import KEYMAP, parse  # noqa: E402
 
 HERE = os.path.dirname(__file__)
 h = bytes.fromhex
@@ -73,6 +74,21 @@ class ConfigTest(unittest.TestCase):
     def test_every_action_has_a_key(self):
         for action in config.DEFAULT_BUTTONS.values():
             self.assertTrue(ACTIONS[action].startswith("KEY_"))
+
+
+class TerminalKeysTest(unittest.TestCase):
+    def test_arrows_and_enter(self):
+        self.assertEqual(parse("\x1b[D\x1b[C\x1b[A\x1b[B\r"), [
+            ("knob_left", "turn"), ("knob_right", "turn"),
+            ("up", "short"), ("down", "short"), ("ok", "short")])
+
+    def test_unknown_keys_skipped(self):
+        self.assertEqual(parse("x\x1b[5~\x7f"), [("exit", "short")])
+
+    def test_every_key_is_mapped(self):
+        for name, kind in KEYMAP.values():
+            key = name if kind == "turn" else f"{name}.{kind}"
+            self.assertIn(key, config.DEFAULT_BUTTONS)
 
 
 class OpenautoIniTest(unittest.TestCase):

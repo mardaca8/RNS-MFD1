@@ -1,4 +1,4 @@
-"""RNS-MFD1 -> openauto bridge: python3 -m rnsaa [-c /etc/rnsaa.conf] [--learn]
+"""RNS-MFD1 -> openauto bridge: python3 -m rnsaa [-c /etc/rnsaa.conf] [--learn | --keyboard]
 
 Keeps the MFD in TV mode (tuner emulation) and turns MFD buttons
 into key presses for openauto (Android Auto).
@@ -29,10 +29,8 @@ def learn(cfg):
     threading.Event().wait()
 
 
-def run(cfg):
-    from .keys import VirtualKeyboard
-
-    keyboard = VirtualKeyboard()
+def button_handler(cfg, keyboard):
+    """Map MFD button events through [buttons] to openauto key taps."""
     actions = {key: config_mod.parse_action(value) for key, value in cfg.buttons.items()}
 
     def on_button(name, kind):
@@ -40,6 +38,27 @@ def run(cfg):
         if action:
             log.debug("%s %s -> %s", name, kind, action)
             keyboard.tap(action)
+
+    return on_button
+
+
+def keyboard_test(cfg):
+    """No CAN: terminal keys stand in for MFD buttons."""
+    from . import terminal
+    from .keys import VirtualKeyboard
+
+    keyboard = VirtualKeyboard()
+    try:
+        terminal.run(button_handler(cfg, keyboard))
+    finally:
+        keyboard.close()
+
+
+def run(cfg):
+    from .keys import VirtualKeyboard
+
+    keyboard = VirtualKeyboard()
+    on_button = button_handler(cfg, keyboard)
 
     link = MfdLink(cfg.can_channel, cfg.long_press, on_button)
     link.start()
@@ -58,6 +77,8 @@ def main():
     parser = argparse.ArgumentParser(prog="rnsaa")
     parser.add_argument("-c", "--config", default="/etc/rnsaa.conf")
     parser.add_argument("--learn", action="store_true", help="print raw MFD frames and decoded buttons")
+    parser.add_argument("--keyboard", action="store_true",
+                        help="test without CAN: arrows / Enter / Backspace in this terminal act as MFD buttons")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -66,6 +87,8 @@ def main():
     cfg = config_mod.load(args.config)
     if args.learn:
         learn(cfg)
+    elif args.keyboard:
+        keyboard_test(cfg)
     else:
         run(cfg)
 

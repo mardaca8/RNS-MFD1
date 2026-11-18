@@ -62,6 +62,27 @@ cd /opt/rnsaa && sudo python3 -m rnsaa --learn
 ```
 Switch the MFD to TV and press buttons. Each raw `464#...` frame is printed, with the decoded button below it.
 
+## Testing without the MFD (keyboard over SSH)
+```bash
+cd /opt/rnsaa && sudo python3 -m rnsaa --keyboard
+```
+Keys typed in this terminal act as MFD buttons. They go through the same `[buttons]` mapping as the real ones, so this also tests `/etc/rnsaa.conf`. No CAN module needed.
+
+| Key | MFD button | Android Auto (default) |
+|---|---|---|
+| ← / → | knob turn | rotary scroll |
+| ↑ / ↓ | ▲ / ▼ | up / down |
+| Enter | knob press | select |
+| Backspace | EXIT | back |
+| v / h | long knob press / long EXIT | Google Assistant / home |
+| , / . | ◀ / ▶ | previous / next track |
+| < / > | long ◀ / ▶ | left / right |
+| Space / n | SCAN / long SCAN | play-pause / navigation |
+| 1 / 2 | 1 / 2 | answer / end call |
+| q | quit | |
+
+A USB keyboard plugged into the Pi also works directly in openauto: arrows, Enter = select, Esc = back, H = home.
+
 ## Logs
 ```bash
 journalctl -u rnsaa -u openauto -u openauto-btservice -u rns-bt-reconnect -u hostapd -f
