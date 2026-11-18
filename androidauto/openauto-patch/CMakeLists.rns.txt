@@ -1,0 +1,6 @@
+
+# RNS-MFD1 patch: QtVideoOutput uses GStreamer directly (low-latency video)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(RNS_GST REQUIRED gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+target_include_directories(autoapp PRIVATE ${RNS_GST_INCLUDE_DIRS})
+target_link_libraries(autoapp PRIVATE ${RNS_GST_LIBRARIES})
