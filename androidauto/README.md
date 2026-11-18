@@ -90,7 +90,7 @@ journalctl -u rnsaa -u openauto -u openauto-btservice -u rns-bt-reconnect -u hos
 
 ## Known limits
 - **5 GHz hotspot:** if `hostapd` fails to start (`journalctl -u hostapd`), check the country code in `/etc/hostapd/hostapd.conf`. Then try removing `ieee80211ac=1`, or use another non-DFS channel such as 40, 44 or 48.
-- **Performance:** openauto now decodes through Qt Multimedia/GStreamer instead of the old OMX path. 800×480 at 30 fps is the realistic limit on a 3B+.
+- **Video latency:** the installer patches openauto's video output (`openauto-patch/`). Stock openauto plays through QMediaPlayer, which lagged ~30 s behind and used ~175 % CPU on a 3B+. The patch uses appsrc → h264parse → v4l2h264dec (hardware) → appsink with `sync=false` and keeps only the newest frame, drawn with OpenGL. To try another decode chain without rebuilding, set `OPENAUTO_VIDEO_PIPELINE` in a drop-in of `openauto.service` (it must end in raw video, e.g. `h264parse ! avdec_h264 ! videoconvert`).
 - **Picture position:** if the picture is cut off or shifted, change the `margin_*` values in `cmdline.txt` (same as the main project), or `MarginWidth`/`MarginHeight` in `openauto.ini`.
 
 ## Tests (no hardware)

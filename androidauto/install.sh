@@ -66,7 +66,7 @@ install_packages() {
         libboost-all-dev libprotobuf-dev protobuf-compiler libusb-1.0-0-dev libssl-dev libabsl-dev \
         libblkid-dev libgps-dev libtag1-dev librtaudio-dev \
         qtbase5-dev qtmultimedia5-dev qttools5-dev qttools5-dev-tools qtconnectivity5-dev \
-        libqt5multimedia5-plugins \
+        libqt5multimedia5-plugins libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
         || { red "     Package installation failed. ❌"; exit 1; }
     green "     Packages installed. ✅"
 }
@@ -91,8 +91,16 @@ checkout() {
     if [ ! -d "$2/.git" ]; then
         git clone "https://github.com/$1.git" "$2" || { red "     Clone of $1 failed. ❌"; exit 1; }
     fi
+    git -C "$2" reset -q --hard  # drop a previously applied patch
     git -C "$2" fetch -q origin
     git -C "$2" checkout -q "$3" || { red "     Checkout $3 failed. ❌"; exit 1; }
+}
+
+# Low-latency video: openauto's QMediaPlayer output lagged ~30 s and used ~175 % CPU on a 3B+
+apply_openauto_patch() {
+    cp -r "$SRC/openauto-patch/include" "$SRC/openauto-patch/src" $BUILD/openauto/
+    cat "$SRC/openauto-patch/CMakeLists.rns.txt" >> $BUILD/openauto/CMakeLists.txt
+    green "     openauto low-latency video patch applied. ✅"
 }
 
 build_openauto() {
@@ -107,12 +115,15 @@ build_openauto() {
     # nproc (used by the build scripts) honours OMP_NUM_THREADS; 2 jobs fit in RAM+swap
     export OMP_NUM_THREADS=2 JOBS=2
 
-    checkout opencardev/aasdk $BUILD/aasdk $AASDK_REF
-    (cd $BUILD/aasdk && bash build.sh release package install) || { red "     aasdk build failed. ❌"; swap_off; exit 1; }
-    find $BUILD/aasdk -maxdepth 3 -name "*.deb" -newer $BUILD/aasdk/CMakeLists.txt -exec apt-get install -y --allow-downgrades {} +
-    ldconfig
+    if ! ldconfig -p | grep -q libaasdk; then
+        checkout opencardev/aasdk $BUILD/aasdk $AASDK_REF
+        (cd $BUILD/aasdk && bash build.sh release package install) || { red "     aasdk build failed. ❌"; swap_off; exit 1; }
+        find $BUILD/aasdk -maxdepth 3 -name "*.deb" -newer $BUILD/aasdk/CMakeLists.txt -exec apt-get install -y --allow-downgrades {} +
+        ldconfig
+    fi
 
     checkout opencardev/openauto $BUILD/openauto $OPENAUTO_REF
+    apply_openauto_patch
     rm -rf $BUILD/debs
     (cd $BUILD/openauto && bash build.sh release --package --output-dir $BUILD/debs) || { red "     openauto build failed. ❌"; swap_off; exit 1; }
     apt-get install -y --allow-downgrades $BUILD/debs/*.deb || { red "     openauto package install failed. ❌"; swap_off; exit 1; }
