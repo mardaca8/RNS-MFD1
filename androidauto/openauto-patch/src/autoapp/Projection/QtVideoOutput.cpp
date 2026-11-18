@@ -139,12 +139,15 @@ static GstBusSyncReply onBusMessage(GstBus*, GstMessage* message, gpointer)
     return GST_BUS_DROP;
 }
 
-// Decode chain between appsrc and appsink. Override for tests without rebuilding, e.g.
-// OPENAUTO_VIDEO_PIPELINE="h264parse ! avdec_h264 ! videoconvert"
+// Decode chain between appsrc and appsink. Software decoding on purpose: the Pi's v4l2h264dec
+// only releases a frame after several more arrive, and Android Auto sends few frames while the
+// screen is still, so the picture lagged ~30 s. avdec_h264 with one thread outputs every frame
+// immediately. Override for tests without rebuilding, e.g.
+// OPENAUTO_VIDEO_PIPELINE="h264parse ! v4l2h264dec ! videoconvert"
 static std::string decodeChain()
 {
     const char* custom = std::getenv("OPENAUTO_VIDEO_PIPELINE");
-    return custom != nullptr && *custom != '\0' ? custom : "h264parse ! v4l2h264dec ! videoconvert";
+    return custom != nullptr && *custom != '\0' ? custom : "h264parse ! avdec_h264 max-threads=1 ! videoconvert";
 }
 
 QtVideoOutput::QtVideoOutput(configuration::IConfiguration::Pointer configuration)
@@ -212,7 +215,8 @@ void QtVideoOutput::onStartPlayback()
 
     const std::string description =
         "appsrc name=src is-live=true do-timestamp=true format=time stream-type=stream "
-        "caps=video/x-h264,stream-format=byte-stream ! " + decodeChain() +
+        // every Android Auto video message is one whole frame, so h264parse need not wait for the next
+        "caps=video/x-h264,stream-format=byte-stream,alignment=au ! " + decodeChain() +
         " ! video/x-raw,format=BGRx ! appsink name=sink sync=false max-buffers=1 drop=true";
     OPENAUTO_LOG(info) << "[QtVideoOutput] Pipeline: " << description;
 

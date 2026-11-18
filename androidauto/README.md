@@ -40,7 +40,7 @@ The installer:
 7. installs `rnsaa.service` (the MFD bridge) and turns off Kodi, the cursor and the tty1 login.
 
 **First connection:** on the MFD select **TV**. On the phone, pair Bluetooth with the Pi. The phone then joins the hotspot by itself and Android Auto starts.
-After that `rns-bt-reconnect.service` connects to the trusted phone automatically whenever the Pi boots, and retries every 15 s while no phone is connected.
+After that `rns-bt-reconnect.service` connects to the trusted phone automatically once openauto is ready. If the phone is connected over Bluetooth but no Android Auto session starts within 30 s, it disconnects and reconnects the phone.
 
 ## MFD buttons → Android Auto (default)
 | MFD | short | long (> 0.4 s) |
@@ -90,7 +90,7 @@ journalctl -u rnsaa -u openauto -u openauto-btservice -u rns-bt-reconnect -u hos
 
 ## Known limits
 - **5 GHz hotspot:** if `hostapd` fails to start (`journalctl -u hostapd`), check the country code in `/etc/hostapd/hostapd.conf`. Then try removing `ieee80211ac=1`, or use another non-DFS channel such as 40, 44 or 48.
-- **Video latency:** the installer patches openauto's video output (`openauto-patch/`). Stock openauto plays through QMediaPlayer, which lagged ~30 s behind and used ~175 % CPU on a 3B+. The patch uses appsrc → h264parse → v4l2h264dec (hardware) → appsink with `sync=false` and keeps only the newest frame, drawn with OpenGL. To try another decode chain without rebuilding, set `OPENAUTO_VIDEO_PIPELINE` in a drop-in of `openauto.service` (it must end in raw video, e.g. `h264parse ! avdec_h264 ! videoconvert`).
+- **Video latency:** the installer patches openauto's video output (`openauto-patch/`). Stock openauto plays through QMediaPlayer, which lagged ~30 s behind and used ~175 % CPU on a 3B+. The patch pushes each frame through appsrc → h264parse → avdec_h264 (one thread) → appsink with `sync=false` and keeps only the newest frame, drawn with OpenGL. The Pi's hardware decoder (v4l2h264dec) is not used: it only releases a frame after several more arrive, which caused the lag. To try another decode chain without rebuilding, set `OPENAUTO_VIDEO_PIPELINE` in a drop-in of `openauto.service` (it must end in raw video, e.g. `h264parse ! v4l2h264dec ! videoconvert`).
 - **Picture position:** if the picture is cut off or shifted, change the `margin_*` values in `cmdline.txt` (same as the main project), or `MarginWidth`/`MarginHeight` in `openauto.ini`.
 
 ## Tests (no hardware)

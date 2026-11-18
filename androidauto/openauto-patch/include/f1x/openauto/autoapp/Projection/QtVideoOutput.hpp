@@ -17,7 +17,7 @@
 */
 
 // RNS-MFD1 patch: low-latency replacement for the QMediaPlayer based output.
-// appsrc -> h264parse -> v4l2h264dec (Pi hardware) -> appsink (sync=false, newest frame only)
+// appsrc (whole frames) -> h264parse -> avdec_h264 -> appsink (sync=false, newest frame only)
 // -> QOpenGLWidget, so frames are shown as soon as they are decoded and never queue up.
 
 #pragma once

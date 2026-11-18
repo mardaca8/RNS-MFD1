@@ -1,17 +1,39 @@
 #!/bin/sh
-# Reconnect a trusted phone, so wireless Android Auto starts without touching the phone:
-# the hands-free connection makes the phone open openauto's Bluetooth service.
-# Only one phone at a time; retried while none is connected (car start, phone out of range).
-INTERVAL=${INTERVAL:-15}
+# Keep a trusted phone connected, so wireless Android Auto starts without touching the phone.
+# The Bluetooth (hands-free) connection makes the phone ask openauto's btservice for the hotspot,
+# then the phone opens the Android Auto session on TCP 5000.
+# Waits until openauto listens before connecting. If the phone is connected but no session
+# follows (it connected before openauto was ready, or the session dropped), it is reconnected.
+# Only one phone at a time.
+PORT=5000
+INTERVAL=${INTERVAL:-5}
+SESSION_TIMEOUT=${SESSION_TIMEOUT:-30}
 
+listening() { ss -Htln "sport = :$PORT" | grep -q .; }
+session() { ss -Htn state established "( sport = :$PORT )" | grep -q .; }
+
+waited=0
 while true; do
-    if [ -z "$(bluetoothctl devices Connected)" ]; then
-        for mac in $(bluetoothctl devices Trusted | awk '{print $2}'); do
-            if timeout 20 bluetoothctl connect "$mac" | grep -q "Connection successful"; then
-                echo "connected $mac"
-                break
+    if ! listening || session; then
+        waited=0
+    else
+        mac=$(bluetoothctl devices Connected | awk '{print $2; exit}')
+        if [ -z "$mac" ]; then
+            for mac in $(bluetoothctl devices Trusted | awk '{print $2}'); do
+                if timeout 20 bluetoothctl connect "$mac" | grep -q "Connection successful"; then
+                    echo "connected $mac"
+                    break
+                fi
+            done
+            waited=0
+        else
+            waited=$((waited + INTERVAL))
+            if [ "$waited" -ge "$SESSION_TIMEOUT" ]; then
+                echo "no Android Auto session from $mac after ${waited}s, reconnecting"
+                bluetoothctl disconnect "$mac" > /dev/null
+                waited=0
             fi
-        done
+        fi
     fi
     sleep "$INTERVAL"
 done
