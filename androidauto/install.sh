@@ -60,7 +60,7 @@ install_packages() {
     echo "Installing packages..."
     apt-get update
     apt-get install -y \
-        python3-can python3-evdev can-utils alsa-utils bluez hostapd rfkill \
+        python3-can python3-evdev can-utils alsa-utils bluez bluez-firmware pi-bluetooth hostapd rfkill \
         gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
         build-essential cmake ninja-build pkg-config git file dpkg-dev fakeroot \
         libboost-all-dev libprotobuf-dev protobuf-compiler libusb-1.0-0-dev libssl-dev libabsl-dev \
@@ -266,6 +266,46 @@ EOF
     green "     Hotspot RNS-AndroidAuto on wlan0 (10.0.0.1) configured. ✅"
 }
 
+# Pi 3B+ Bluetooth sits on the UART and only appears as hci0 once hciuart attached it.
+# btservice gives up if it starts before that, so make it wait for the adapter.
+configure_bluetooth() {
+    sed -i '/^dtoverlay=\(pi3-\)\?disable-bt/d' $CONFIG
+    sed -i 's/^#\?AutoEnable=.*/AutoEnable=true/' /etc/bluetooth/main.conf
+    grep -q '^AutoEnable=' /etc/bluetooth/main.conf || sed -i '/^\[Policy\]/a AutoEnable=true' /etc/bluetooth/main.conf
+    sed -i 's/^#\? \?DiscoverableTimeout *=.*/DiscoverableTimeout = 0/' /etc/bluetooth/main.conf
+    rfkill unblock bluetooth
+
+    cat > /usr/local/bin/rns-bt-ready << 'EOF'
+#!/bin/sh
+# Wait for hci0, unblock and power it, store its address in openauto.ini
+rfkill unblock bluetooth
+for i in $(seq 30); do
+    [ -e /sys/class/bluetooth/hci0 ] && break
+    sleep 1
+done
+[ -e /sys/class/bluetooth/hci0 ] || { echo "no Bluetooth adapter (hci0)"; exit 1; }
+bluetoothctl power on
+BT_ADDR=$(hciconfig hci0 2> /dev/null | awk '/BD Address/ {print $3}')
+[ -z "$BT_ADDR" ] && BT_ADDR=$(bluetoothctl list | awk '/Controller/ {print $2; exit}')
+[ -n "$BT_ADDR" ] && sed -i "s/^AdapterAddress=.*/AdapterAddress=$BT_ADDR/" /etc/openauto/openauto.ini
+exit 0
+EOF
+    chmod +x /usr/local/bin/rns-bt-ready
+
+    mkdir -p /etc/systemd/system/openauto-btservice.service.d
+    cat > /etc/systemd/system/openauto-btservice.service.d/rns.conf << 'EOF'
+[Unit]
+Wants=bluetooth.service hciuart.service
+After=bluetooth.service hciuart.service
+
+[Service]
+WorkingDirectory=/etc/openauto
+ExecStartPre=/usr/local/bin/rns-bt-ready
+Restart=always
+EOF
+    green "     Bluetooth (hciuart, wait for hci0, always discoverable) configured. ✅"
+}
+
 configure_openauto() {
     mkdir -p /etc/openauto
     if [ ! -f /etc/openauto/openauto.ini ]; then
@@ -284,7 +324,7 @@ After=rnsaa.service hostapd.service
 WorkingDirectory=/etc/openauto
 Environment="QT_QPA_EGLFS_HIDECURSOR=1"
 EOF
-    systemctl enable bluetooth openauto.service openauto-btservice.service
+    systemctl enable bluetooth hciuart openauto.service openauto-btservice.service
     green "     openauto configured (/etc/openauto/openauto.ini). ✅"
 }
 
@@ -331,6 +371,7 @@ fi
 
 rpi_audio_jack
 wifi_hotspot
+configure_bluetooth
 configure_openauto
 install_bridge
 rpi_quiet_console

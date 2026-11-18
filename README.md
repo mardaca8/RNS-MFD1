@@ -63,6 +63,7 @@ sudo bash /tmp/install.sh
     - [Remove a previously connected device](#bluetooth_del)
     - [Checking usb bluetooth adapter](#bluetooth-usb-adapter)
 8. [There is no image on the PC monitor or home TV.](#not-image-monitor-or-tv)
+9. [RNS-MFD1 wireless Android Auto setup (Raspberry Pi 3B+, no dongle)](#rns-mfd1-wireless-android-auto-setup)
   
 ---
 ### Configuring CAN data display   
@@ -326,3 +327,101 @@ run script
 ```bash
 sudo bash video.sh
 ```
+
+---
+
+## RNS-MFD1 wireless Android Auto setup
+Wireless Android Auto on the RNS-MFD (MFD1), with no dongle. It replaces Kodi. The picture and sound come through the MFD's **TV** source, and the MFD's own buttons control Android Auto.
+More details: [androidauto/README.md](androidauto/README.md)
+
+### 1. What you need
+| Part | Notes |
+|---|---|
+| Raspberry Pi 3B+ | Its dual-band Wi-Fi is used for a 5 GHz hotspot, and its Bluetooth for pairing |
+| microSD card, 16 GB or more | |
+| MCP2515 + SN65HVD230 CAN module | Wired as **CAN0** (see [Raspberry PI connect modules](#raspberry-PI-connect-modules)) |
+| HDMI→VGA adapter **or** a 3.5 mm TRRS breakout | Video to the MFD TV input (RGB or composite) |
+| 3.5 mm audio cable + ground-loop isolator | Audio to the MFD TV audio input |
+| 12 V → 5 V / 3 A buck converter | Power for the Pi in the car |
+| Ethernet cable | Internet during the install: the Pi's Wi-Fi becomes the hotspot |
+| Optional USB microphone | For Google Assistant and calls |
+| Android phone | Android 11 or newer, with wireless Android Auto |
+
+### 2. Prepare the SD card
+1. Open **Raspberry Pi Imager**.
+2. Choose **Raspberry Pi 3**, then **Raspberry Pi OS Lite (64-bit)**, the **trixie** release. trixie is required.
+3. Under OS customisation, set a user and password, set Wi-Fi country **LT**, and turn on **SSH**.
+4. Write the card, put it in the Pi, connect Ethernet and power, then log in: `ssh <user>@<pi-ip>`
+
+### 3. Wiring
+**CAN0** (MCP2515 with SN65HVD230):
+
+| RPI GPIO | CAN0 |
+|---|---|
+| 3V3 | VCC |
+| GND | GND |
+| GPIO 9 | SO |
+| GPIO 10 | SI |
+| GPIO 11 | SCK |
+| GPIO 8 | CS |
+| GPIO 25 | INT |
+
+Connect CAN-H/CAN-L and the TV video and audio inputs to the MFD as shown in [Connect to VAG RNS](#connect-to-vag-rns) (RNS-MFD).
+- **Video:** use the HDMI→VGA adapter, **or** composite from the Pi's 3.5 mm jack. The jack is TRRS and carries audio L/R plus composite video.
+- **Audio:** connect the 3.5 mm jack L/R/GND to the MFD TV audio input, through the ground-loop isolator.
+
+### 4. Install
+```bash
+sudo apt install -y git
+git clone https://github.com/maltsevvv/repository.git
+sudo bash repository/androidauto/install.sh
+```
+The installer asks:
+| Question | Answer |
+|---|---|
+| openauto build | Starts by itself and takes **1–3 hours**. Leave the Pi powered on. |
+| MCP2515 crystal | **8 MHz** or **16 MHz**: read it from the crystal on your module |
+| Video Output | **HDMI** (VGA adapter) or **JACK** (composite) |
+| Wi-Fi country | **LT** (default) |
+| Hotspot band | **5 GHz** (recommended) |
+
+At the end it prints the hotspot name `RNS-AndroidAuto` and its password, then offers to reboot.
+After this the Pi no longer joins your home Wi-Fi. Use Ethernet, or connect to the hotspot and run `ssh <user>@10.0.0.1`.
+
+### 5. Test the MFD buttons
+```bash
+sudo systemctl stop rnsaa
+cd /opt/rnsaa && sudo python3 -m rnsaa --learn
+```
+Switch the MFD to **TV**, then press each button. Every button should print a line such as `-> ok short`. Press Ctrl+C to quit, then run `sudo systemctl start rnsaa`.
+
+### 6. Connect the phone
+1. On the MFD select **TV**.
+2. On the phone, open Bluetooth settings and pair with the Pi. Its name is the Pi's hostname.
+3. The phone joins `RNS-AndroidAuto` by itself, and Android Auto appears on the MFD.
+4. From then on it reconnects automatically every time the Pi boots.
+
+### 7. MFD buttons → Android Auto
+| MFD | short | long (> 0.4 s) |
+|---|---|---|
+| Knob turn | scroll | |
+| Knob press / AS | select | Google Assistant |
+| EXIT / 3 | back | home |
+| ▲ / ▼ (5) | up / down | |
+| ◀ / ▶ | previous / next track | left / right |
+| SCAN / 6 | play / pause | navigation |
+| 1 / 2 | answer / end call | |
+
+To change the mapping, edit `/etc/rnsaa.conf`, then run `sudo systemctl restart rnsaa`.
+
+### 8. Troubleshooting
+```bash
+journalctl -u rnsaa -u openauto -u openauto-btservice -u hostapd -f
+```
+| Problem | Check |
+|---|---|
+| No `-> button` output in `--learn` | CAN wiring, the crystal setting, and `ip -details link show can0` (should show 100000) |
+| Hotspot does not start | `journalctl -u hostapd`. Check the country code, or remove `ieee80211ac=1` from `/etc/hostapd/hostapd.conf` |
+| Phone pairs but Android Auto does not start | Turn on wireless Android Auto in the phone's Android Auto settings, and check that 5 GHz is used |
+| Picture cut off or shifted | The `margin_*` values in `/boot/firmware/cmdline.txt` |
+| Hum or hiss in the sound | Ground-loop isolator. Lower the volume with `alsamixer` |
