@@ -1,0 +1,17 @@
+#!/bin/sh
+# Reconnect a trusted phone, so wireless Android Auto starts without touching the phone:
+# the hands-free connection makes the phone open openauto's Bluetooth service.
+# Only one phone at a time; retried while none is connected (car start, phone out of range).
+INTERVAL=${INTERVAL:-15}
+
+while true; do
+    if [ -z "$(bluetoothctl devices Connected)" ]; then
+        for mac in $(bluetoothctl devices Trusted | awk '{print $2}'); do
+            if timeout 20 bluetoothctl connect "$mac" | grep -q "Connection successful"; then
+                echo "connected $mac"
+                break
+            fi
+        done
+    fi
+    sleep "$INTERVAL"
+done

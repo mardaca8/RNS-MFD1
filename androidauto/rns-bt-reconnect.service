@@ -1,0 +1,13 @@
+[Unit]
+Description=Reconnect trusted phones for wireless Android Auto
+Requires=bluetooth.service
+After=bluetooth.service openauto-btservice.service rns-bt-agent.service
+
+[Service]
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/local/bin/rns-bt-reconnect
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

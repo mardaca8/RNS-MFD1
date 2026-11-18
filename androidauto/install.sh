@@ -60,7 +60,7 @@ install_packages() {
     echo "Installing packages..."
     apt-get update
     apt-get install -y \
-        python3-can python3-evdev can-utils alsa-utils bluez bluez-firmware bluez-tools bluez-alsa-utils pi-bluetooth hostapd rfkill \
+        python3-can python3-evdev can-utils alsa-utils pulseaudio pulseaudio-utils bluez bluez-firmware bluez-tools bluez-alsa-utils pi-bluetooth hostapd rfkill \
         gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
         build-essential cmake ninja-build pkg-config git file dpkg-dev fakeroot \
         libboost-all-dev libprotobuf-dev protobuf-compiler libusb-1.0-0-dev libssl-dev libabsl-dev \
@@ -184,20 +184,16 @@ rpi_audio_jack() {
     sed -i 's/^#\?dtparam=audio=on/dtparam=audio=on/' $CONFIG
     grep -q '^dtparam=audio=on' $CONFIG || echo "dtparam=audio=on" >> $CONFIG
     sed -i "/.*hifiberry-dac.*/d" $CONFIG
+    # Straight to the jack: bcm2835 has 8 hardware subdevices, so media + navigation + calls
+    # can play together without dmix (dmix stalls on bcm2835)
     cat > /etc/asound.conf << 'EOF'
-# 3.5 mm jack, mixed so Android Auto media + navigation + calls can play together
 pcm.!default {
     type plug
-    slave.pcm "dmixer"
-}
-pcm.dmixer {
-    type dmix
-    ipc_key 1024
-    ipc_perm 0666
-    slave {
-        pcm "hw:Headphones"
-        rate 48000
-        channels 2
+    slave.pcm "hw:Headphones"
+    # listed by name hints, so Qt picks it instead of the first card (e.g. HDMI)
+    hint {
+        show on
+        description "3.5 mm jack"
     }
 }
 ctl.!default {
@@ -205,6 +201,28 @@ ctl.!default {
     card Headphones
 }
 EOF
+    # openauto's RtAudio output uses PulseAudio. Run one system-wide server that only
+    # knows the jack (Qt's own audio output never opened the card here).
+    systemctl --global disable pulseaudio.service pulseaudio.socket 2> /dev/null
+    cat > /etc/pulse/system.pa << 'EOF'
+load-module module-alsa-sink device=hw:Headphones sink_name=jack tsched=0 rate=48000
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink jack
+EOF
+    cat > /etc/systemd/system/pulseaudio-system.service << 'EOF'
+[Unit]
+Description=PulseAudio system server (3.5 mm jack)
+After=sound.target
+
+[Service]
+ExecStart=/usr/bin/pulseaudio --system --disallow-exit --log-target=journal
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable pulseaudio-system.service
     green "     Analog 3.5 mm audio output configured. ✅"
 }
 
@@ -285,6 +303,9 @@ configure_bluetooth() {
     mkdir -p /etc/systemd/system/bluealsa.service.d
     printf '[Service]\nExecStart=\nExecStart=/usr/bin/bluealsa -S -p hfp-hf -p hsp-hs\n' > /etc/systemd/system/bluealsa.service.d/rns.conf
     systemctl disable bluealsa-aplay.service 2> /dev/null
+    # Qt plays to the first ALSA device in the name-hint list; bluealsa's PCM would come
+    # before "default" and swallow Android Auto audio
+    rm -f /etc/alsa/conf.d/20-bluealsa.conf
     rfkill unblock bluetooth
 
     cat > /usr/local/bin/rns-bt-ready << 'EOF'
@@ -336,7 +357,10 @@ KillSignal=SIGUSR1
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable bluealsa.service rns-bt-agent.service
+    install -m 755 "$SRC/rns-bt-reconnect" /usr/local/bin/rns-bt-reconnect
+    cp "$SRC/rns-bt-reconnect.service" /etc/systemd/system/rns-bt-reconnect.service
+    systemctl daemon-reload
+    systemctl enable bluealsa.service rns-bt-agent.service rns-bt-reconnect.service
     green "     Bluetooth (hciuart, wait for hci0, pairing agent, always discoverable) configured. ✅"
 }
 
@@ -352,11 +376,12 @@ configure_openauto() {
     mkdir -p /etc/systemd/system/openauto.service.d
     cat > /etc/systemd/system/openauto.service.d/rns.conf << 'EOF'
 [Unit]
-After=rnsaa.service hostapd.service
+After=rnsaa.service hostapd.service pulseaudio-system.service
 
 [Service]
 WorkingDirectory=/etc/openauto
 Environment="QT_QPA_EGLFS_HIDECURSOR=1"
+Environment="PULSE_SERVER=unix:/run/pulse/native"
 EOF
     systemctl enable bluetooth hciuart openauto.service openauto-btservice.service
     green "     openauto configured (/etc/openauto/openauto.ini). ✅"

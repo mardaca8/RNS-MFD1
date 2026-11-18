@@ -40,7 +40,7 @@ The installer:
 7. installs `rnsaa.service` (the MFD bridge) and turns off Kodi, the cursor and the tty1 login.
 
 **First connection:** on the MFD select **TV**. On the phone, pair Bluetooth with the Pi. The phone then joins the hotspot by itself and Android Auto starts.
-After that it reconnects automatically whenever the Pi boots.
+After that `rns-bt-reconnect.service` connects to the trusted phone automatically whenever the Pi boots, and retries every 15 s while no phone is connected.
 
 ## MFD buttons → Android Auto (default)
 | MFD | short | long (> 0.4 s) |
@@ -64,7 +64,7 @@ Switch the MFD to TV and press buttons. Each raw `464#...` frame is printed, wit
 
 ## Logs
 ```bash
-journalctl -u rnsaa -u openauto -u openauto-btservice -u hostapd -f
+journalctl -u rnsaa -u openauto -u openauto-btservice -u rns-bt-reconnect -u hostapd -f
 ```
 
 ## Known limits
