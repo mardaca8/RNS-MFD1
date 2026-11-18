@@ -8,11 +8,13 @@ import logging
 import signal
 import sys
 import threading
+import time
 
 from . import config as config_mod
 from .mfd import MfdLink
 
 log = logging.getLogger("rnsaa")
+CAN_RETRY = 5  # seconds
 
 
 def learn(cfg):
@@ -61,7 +63,6 @@ def run(cfg):
     on_button = button_handler(cfg, keyboard)
 
     link = MfdLink(cfg.can_channel, cfg.long_press, on_button)
-    link.start()
 
     def shutdown(*_):
         link.stop()
@@ -70,6 +71,14 @@ def run(cfg):
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+    # Keep the virtual keyboard alive while can0 is missing or not up yet (e.g. no CAN module)
+    while True:
+        try:
+            link.start()
+            break
+        except Exception as e:
+            log.warning("CAN %s not available (%s), retrying in %d s", cfg.can_channel, e, CAN_RETRY)
+            time.sleep(CAN_RETRY)
     threading.Event().wait()
 
 

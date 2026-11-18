@@ -1,7 +1,8 @@
 [Unit]
 Description=RNS-MFD1 buttons -> Android Auto (openauto)
-Wants=sys-subsystem-net-devices-can0.device
-After=sys-subsystem-net-devices-can0.device systemd-networkd.service
+# No wait for the can0 device: without a CAN module systemd would block for 90 s, and openauto
+# starts after this unit. rnsaa retries can0 itself every 5 s.
+After=systemd-networkd.service
 # The virtual keyboard must exist before openauto starts reading input devices
 Before=openauto.service
 
