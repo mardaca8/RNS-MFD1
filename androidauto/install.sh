@@ -411,6 +411,24 @@ install_bridge() {
     green "     rnsaa service installed. ✅"
 }
 
+# openauto and the hotspot waited ~18 s for NetworkManager (network.target) and ~6 s for cloud-init.
+# Ethernet (SSH, updates) moves to systemd-networkd, which already runs wlan0 and can0.
+rpi_fast_boot() {
+    cat > /etc/systemd/network/80-eth0.network << 'EOF'
+[Match]
+Name=eth0
+
+[Network]
+DHCP=yes
+EOF
+    systemctl disable NetworkManager.service NetworkManager-wait-online.service systemd-networkd-wait-online.service &> /dev/null
+    # cloud-init only matters on the first boot (user/password from Raspberry Pi Imager)
+    [ -d /etc/cloud ] && touch /etc/cloud/cloud-init.disabled
+    grep -q '^disable_splash=' $CONFIG || echo "disable_splash=1" >> $CONFIG
+    grep -q '^boot_delay=' $CONFIG || echo "boot_delay=0" >> $CONFIG
+    green "     Fast boot: NetworkManager -> systemd-networkd, cloud-init and wait-online off. ✅"
+}
+
 rpi_quiet_console() {
     # Nothing but Android Auto on the MFD: no cursor, no login prompt, no boot logo
     grep -q 'vt.global_cursor_default' $CMDLINE || sed -i 's/$/ vt.global_cursor_default=0 consoleblank=0 logo.nologo/' $CMDLINE
@@ -444,6 +462,7 @@ wifi_hotspot
 configure_bluetooth
 configure_openauto
 install_bridge
+rpi_fast_boot
 rpi_quiet_console
 
 green "Done! 🎉"
