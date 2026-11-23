@@ -1,0 +1,33 @@
+--- a/src/autoapp/autoapp.cpp
++++ b/src/autoapp/autoapp.cpp
+@@ -20,6 +20,8 @@
+ #include <QApplication>
+ #include <QScreen>
+ #include <QDesktopWidget>
++#include <QLabel>
++#include <QPixmap>
+ #include <aasdk/USB/USBHub.hpp>
+ #include <aasdk/USB/ConnectedAccessoriesEnumerator.hpp>
+ #include <aasdk/USB/AccessoryModeQueryChain.hpp>
+@@ -229,9 +231,18 @@
+         OPENAUTO_LOG(debug) << "[AutoApp] MainWindow Day.";
+     });
+ 
+-    mainWindow.showFullScreen();
+-    mainWindow.setFixedSize(width, height);
+-    mainWindow.adjustSize();
++    // RNS-MFD1: no openauto menu on the MFD. A splash (black, or /etc/openauto/splash.png) stays
++    // under the Android Auto video window, also between sessions. Keys still reach InputDevice,
++    // which filters on the QApplication.
++    QLabel splash;
++    splash.setStyleSheet("background-color: black;");
++    splash.setAlignment(Qt::AlignCenter);
++    QPixmap splashImage("/etc/openauto/splash.png");
++    if (!splashImage.isNull()) {
++        splash.setPixmap(splashImage.scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
++    }
++    splash.setFixedSize(width, height);
++    splash.showFullScreen();
+ 
+     aasdk::usb::USBWrapper usbWrapper(usbContext);
+     aasdk::usb::AccessoryModeQueryFactory queryFactory(usbWrapper, ioService);

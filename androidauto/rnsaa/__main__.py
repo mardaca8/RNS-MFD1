@@ -11,6 +11,7 @@ import threading
 import time
 
 from . import config as config_mod
+from .fis import FisText
 from .mfd import MfdLink
 
 log = logging.getLogger("rnsaa")
@@ -79,6 +80,8 @@ def run(cfg):
         except Exception as e:
             log.warning("CAN %s not available (%s), retrying in %d s", cfg.can_channel, e, CAN_RETRY)
             time.sleep(CAN_RETRY)
+    if cfg.fis:
+        FisText(link.send).start()
     threading.Event().wait()
 
 

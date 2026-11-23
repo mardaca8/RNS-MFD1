@@ -100,7 +100,11 @@ checkout() {
 apply_openauto_patch() {
     cp -r "$SRC/openauto-patch/include" "$SRC/openauto-patch/src" $BUILD/openauto/
     cat "$SRC/openauto-patch/CMakeLists.rns.txt" >> $BUILD/openauto/CMakeLists.txt
-    green "     openauto low-latency video patch applied. ✅"
+    # No openauto/crankshaft menu: black splash (or /etc/openauto/splash.png) until Android Auto starts
+    git -C $BUILD/openauto apply "$SRC/openauto-patch/autoapp-splash.patch" || { red "     autoapp splash patch failed. ❌"; exit 1; }
+    # Register the media status service: the phone's "now playing" goes to rnsaa for the cluster text
+    git -C $BUILD/openauto apply "$SRC/openauto-patch/media-status.patch" || { red "     media status patch failed. ❌"; exit 1; }
+    green "     openauto patches applied (low-latency video, splash, now playing). ✅"
 }
 
 build_openauto() {
@@ -160,7 +164,9 @@ EOF
 }
 
 rpi_vga() {
-    cp "$REPO/driver/rpi480i.bin" "$REPO/driver/rpi240p.bin" /usr/lib/firmware/
+    # rpi480i27.bin: 480i as HDMI sends it (VIC 6, each pixel twice = 27 MHz). The MFD gets the
+    # same 15.7 kHz timing, but HDMI-VGA adapters don't lock on the 13.5 MHz of rpi480i.bin.
+    cp "$REPO/driver/rpi480i.bin" "$REPO/driver/rpi480i27.bin" "$REPO/driver/rpi240p.bin" /usr/lib/firmware/
     if ! grep -q "hdmi_vga_for_rns" "$CONFIG"; then
         echo " " >> "$CONFIG"
         echo "# hdmi_vga_for_rns" >> "$CONFIG"
@@ -172,9 +178,10 @@ rpi_vga() {
         sed -i '/enable_tvout/d' $CONFIG
         sed -i -r 's/(.+),composite/\1/' $CONFIG
     fi
-    if ! grep -q 'video=HDMI-A-1:NTSC' "$CMDLINE"; then
-        sed -i 's/^/video=HDMI-A-1:NTSC,margin_left=39,margin_right=21,margin_top=17,margin_bottom=27 /' "$CMDLINE"
-        sed -i 's/$/ drm.edid_firmware=HDMI-A-1:rpi480i.bin/' "$CMDLINE"
+    sed -i -e 's/video=HDMI-A-1:NTSC,/video=HDMI-A-1:720x480@60i,/' -e 's/HDMI-A-1:rpi480i\.bin/HDMI-A-1:rpi480i27.bin/' "$CMDLINE"
+    if ! grep -q 'video=HDMI-A-1:720x480@60i' "$CMDLINE"; then
+        sed -i 's/^/video=HDMI-A-1:720x480@60i,margin_left=44,margin_right=3,margin_top=5,margin_bottom=10 /' "$CMDLINE"
+        sed -i 's/$/ drm.edid_firmware=HDMI-A-1:rpi480i27.bin/' "$CMDLINE"
     fi
     # No HDMI audio card, so the 3.5 mm jack is the only sound card
     sed -i 's/^dtoverlay=vc4-kms-v3d.*/dtoverlay=vc4-kms-v3d,noaudio/' $CONFIG
@@ -432,6 +439,9 @@ EOF
 rpi_quiet_console() {
     # Nothing but Android Auto on the MFD: no cursor, no login prompt, no boot logo
     grep -q 'vt.global_cursor_default' $CMDLINE || sed -i 's/$/ vt.global_cursor_default=0 consoleblank=0 logo.nologo/' $CMDLINE
+    # No boot text on the MFD: kernel console to tty3, kernel/systemd/udev messages off
+    sed -i 's/console=tty1/console=tty3/' $CMDLINE
+    grep -q ' quiet' $CMDLINE || sed -i 's/$/ quiet loglevel=3 systemd.show_status=false udev.log_level=3 rd.udev.log_level=3/' $CMDLINE
     systemctl disable getty@tty1.service &> /dev/null
     if systemctl list-unit-files kodi.service &> /dev/null; then
         systemctl disable --now kodi.service &> /dev/null

@@ -18,20 +18,24 @@ MFD_TX_ID = 0x464
 TUNER_TX_ID = 0x264
 
 # Button frame: [seq] 0x20 [01=press|02=release] [code hi] [code lo]
+# Names are the physical buttons, recorded with --learn on an RNS-MFD in TV mode.
+# NAVI, AUDIO, note, INFO, TIM, return, flag and the left knob stay with the RNS.
 BUTTON_CODES = {
-    0x0005: "ok",     # knob press / AS
-    0x0300: "ok",
-    0x0020: "up",
-    0x0010: "down",   # "5"
-    0x0400: "prev",   # <
+    0x0005: "ok",     # right knob press
+    0x0040: "exit",   # arrow button next to NAVI
+    0x0300: "as",     # AS
+    0x3000: "scan",   # SCAN
+    0x0400: "prev",   # < (top left)
     0x0500: "next",   # >
-    0x0040: "exit",   # EXIT / "3"
-    0x2000: "exit",
-    0x3000: "scan",   # SCAN / "6"
-    0x0002: "scan",
-    0x0200: "key1",   # "1"
-    0x0100: "key2",   # "2"
+    0x0200: "key1",
+    0x0100: "key2",
+    0x2000: "key3",
+    0x0020: "key4",
+    0x0010: "key5",
+    0x0002: "key6",
 }
+# The preset keys 1-6 only send a press frame, never a release, so they have no long press.
+PRESS_ONLY = {"key1", "key2", "key3", "key4", "key5", "key6"}
 ENCODER_LEFT = bytes.fromhex("0100FF")
 ENCODER_RIGHT = bytes.fromhex("0101FF")
 
@@ -77,7 +81,7 @@ class ButtonDecoder:
     """Turns 0x464 button frames into (button, kind) events.
 
     kind is "turn" for the rotary knob, otherwise "short" or "long",
-    decided on release like skin.rnspi does.
+    decided on release like skin.rnspi does (preset keys: "short" on press).
     """
 
     def __init__(self, long_press=0.4, clock=time.monotonic):
@@ -98,6 +102,8 @@ class ButtonDecoder:
         if button is None:
             log.debug("unknown MFD button frame %s", data.hex().upper())
             return []
+        if body[0] == 0x01 and button in PRESS_ONLY:
+            return [(button, "short")]
         if body[0] == 0x01:
             self.pressed.setdefault(button, self.clock())
         elif body[0] == 0x02:
@@ -133,16 +139,20 @@ class MfdLink:
         threading.Thread(target=self._run, name="mfd-can", daemon=True).start()
         log.info("MFD link started on %s", self.channel)
 
+    def send(self, can_id, payload):
+        """Send any frame on the bus (used for the cluster text)."""
+        self._send(payload, can_id)
+
     def stop(self):
         self._stop.set()
         if self.bus:
             self.bus.shutdown()
 
-    def _send(self, payload):
+    def _send(self, payload, can_id=TUNER_TX_ID):
         import can
 
         try:
-            self.bus.send(can.Message(arbitration_id=TUNER_TX_ID, data=payload, is_extended_id=False))
+            self.bus.send(can.Message(arbitration_id=can_id, data=payload, is_extended_id=False))
         except can.CanError as e:
             log.warning("CAN send failed: %s", e)
 

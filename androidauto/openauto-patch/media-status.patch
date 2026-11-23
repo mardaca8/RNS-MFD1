@@ -1,0 +1,19 @@
+--- a/src/autoapp/Service/ServiceFactory.cpp
++++ b/src/autoapp/Service/ServiceFactory.cpp
+@@ -38,6 +38,7 @@
+ #include <f1x/openauto/autoapp/Service/Bluetooth/BluetoothService.hpp>
+ #include <f1x/openauto/autoapp/Service/InputSource/InputSourceService.hpp>
+ #include <f1x/openauto/autoapp/Service/WifiProjection/WifiProjectionService.hpp>
++#include <f1x/openauto/autoapp/Service/MediaPlaybackStatus/MediaPlaybackStatusService.hpp>
+ #include <f1x/openauto/autoapp/Projection/QtVideoOutput.hpp>
+ #include <f1x/openauto/autoapp/Projection/OMXVideoOutput.hpp>
+ #include <f1x/openauto/autoapp/Projection/RtAudioOutput.hpp>
+@@ -63,6 +64,8 @@
+     this->createMediaSourceServices(serviceList, messenger);
+     serviceList.emplace_back(this->createSensorService(messenger));
+     serviceList.emplace_back(this->createInputService(messenger));
++    // RNS-MFD1: "now playing" from the phone, for the cluster display (rnsaa)
++    serviceList.emplace_back(std::make_shared<mediaplaybackstatus::MediaPlaybackStatusService>(ioService_, messenger));
+     if (configuration_->getWirelessProjectionEnabled())
+     {
+         // TODO: What is WiFi Projection Service?

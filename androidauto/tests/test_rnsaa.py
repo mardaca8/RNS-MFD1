@@ -1,12 +1,13 @@
 """Hardware-free tests:  cd androidauto && python3 -m unittest discover tests"""
 import configparser
 import os
+import tempfile
 import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from rnsaa import config  # noqa: E402
+from rnsaa import config, fis  # noqa: E402
 from rnsaa.keys import ACTIONS  # noqa: E402
 from rnsaa.mfd import ButtonDecoder, TunerEmulator  # noqa: E402
 from rnsaa.terminal import KEYMAP, parse  # noqa: E402
@@ -49,12 +50,19 @@ class ButtonDecoderTest(unittest.TestCase):
 
     def test_short_and_long(self):
         self.assertEqual(self.press("0005", 0.1), [("ok", "short")])
-        self.assertEqual(self.press("0300", 1.0), [("ok", "long")])
+        self.assertEqual(self.press("0300", 1.0), [("as", "long")])
         self.assertEqual(self.press("0400", 0.1), [("prev", "short")])
-        self.assertEqual(self.press("2000", 0.5), [("exit", "long")])
+        self.assertEqual(self.press("0040", 0.5), [("exit", "long")])
+
+    def test_preset_keys_fire_on_press(self):
+        # recorded on the MFD: 1-6 send only a press frame
+        self.assertEqual(self.d.feed(h("1320010200")), [("key1", "short")])
+        self.assertEqual(self.d.feed(h("1520012000")), [("key3", "short")])
+        self.assertEqual(self.d.feed(h("1820010002")), [("key6", "short")])
+        self.assertEqual(self.d.feed(h("1920020002")), [])  # stray release is ignored
 
     def test_release_without_press_and_unknown(self):
-        self.assertEqual(self.d.feed(h("2220020020")), [])
+        self.assertEqual(self.d.feed(h("2220020040")), [])
         self.assertEqual(self.d.feed(h("2120011234")), [])
         self.assertEqual(self.d.feed(h("2130010020")), [])
 
@@ -80,7 +88,7 @@ class TerminalKeysTest(unittest.TestCase):
     def test_arrows_and_enter(self):
         self.assertEqual(parse("\x1b[D\x1b[C\x1b[A\x1b[B\r"), [
             ("knob_left", "turn"), ("knob_right", "turn"),
-            ("up", "short"), ("down", "short"), ("ok", "short")])
+            ("key4", "short"), ("key5", "short"), ("ok", "short")])
 
     def test_unknown_keys_skipped(self):
         self.assertEqual(parse("x\x1b[5~\x7f"), [("exit", "short")])
@@ -104,3 +112,27 @@ class OpenautoIniTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FisTest(unittest.TestCase):
+    def test_text_and_scrolling(self):
+        self.assertEqual(fis.to_fis("Žemynos ąžuolas"), "ZEMYNOS AZUOLAS")
+        self.assertEqual(fis.to_fis("Café — 2€"), "CAFE 2")
+        self.assertEqual(fis.window("DJ SMASH", 5), "DJ SMASH")
+        self.assertEqual(fis.window("ABC", 0), "ABC     ")
+        text = "MOSCOW NEVER"  # 12 chars: 5 positions, held 2 ticks at the start
+        shown = [fis.window(text, t) for t in range(8)]
+        self.assertEqual(shown, ["MOSCOW N", "MOSCOW N", "MOSCOW N", "OSCOW NE", "SCOW NEV",
+                                 "COW NEVE", "OW NEVER", "MOSCOW N"])
+
+    def test_frames_only_while_playing(self):
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".np") as f:
+            f.write("state=playing\nsong=Moscow Never Sleeps\nartist=DJ Smash\nalbum=x\n")
+        self.addCleanup(os.unlink, f.name)
+        text = fis.FisText(send=None, path=f.name)
+        self.assertEqual(text.frames(10), [
+            (0x265, b"DJ SMASH"), (0x267, b"MOSCOW N"), (0x665, bytes.fromhex("6F200000300020"))])
+        with open(f.name, "w") as out:
+            out.write("state=paused\nsong=Moscow Never Sleeps\nartist=DJ Smash\n")
+        self.assertEqual(text.frames(11), [])
+        self.assertEqual(fis.FisText(send=None, path=f.name + ".missing").frames(0), [])

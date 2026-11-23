@@ -1,0 +1,144 @@
+/*
+*  This file is part of openauto project.
+*  Copyright (C) 2018 f1x.studio (Michal Szwaj)
+*
+*  openauto is free software: you can redistribute it and/or modify
+*  it under the terms of the GNU General Public License as published by
+*  the Free Software Foundation; either version 3 of the License, or
+*  (at your option) any later version.
+
+*  openauto is distributed in the hope that it will be useful,
+*  but WITHOUT ANY WARRANTY; without even the implied warranty of
+*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*  GNU General Public License for more details.
+*
+*  You should have received a copy of the GNU General Public License
+*  along with openauto. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+// RNS-MFD1 patch, see MediaPlaybackStatusService.hpp.
+
+#include <cstdio>
+#include <fstream>
+#include <f1x/openauto/Common/Log.hpp>
+#include <f1x/openauto/autoapp/Service/MediaPlaybackStatus/MediaPlaybackStatusService.hpp>
+
+namespace f1x {
+  namespace openauto {
+    namespace autoapp {
+      namespace service {
+        namespace mediaplaybackstatus {
+
+          // /dev/shm: tmpfs every user can write, and not hidden by a PrivateTmp= service setting
+          static const char *NOWPLAYING_FILE = "/dev/shm/openauto-nowplaying";
+
+          MediaPlaybackStatusService::MediaPlaybackStatusService(boost::asio::io_service &ioService,
+                                                       aasdk::messenger::IMessenger::Pointer messenger)
+              : strand_(ioService),
+                timer_(ioService),
+                channel_(std::make_shared<aasdk::channel::mediaplaybackstatus::MediaPlaybackStatusService>(strand_, std::move(messenger))) {
+
+          }
+
+          void MediaPlaybackStatusService::start() {
+            strand_.dispatch([this, self = this->shared_from_this()]() {
+              OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] start()";
+            });
+          }
+
+          void MediaPlaybackStatusService::stop() {
+            strand_.dispatch([this, self = this->shared_from_this()]() {
+              OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] stop()";
+              song_.clear();
+              artist_.clear();
+              album_.clear();
+              state_ = "stopped";
+              this->writeNowPlaying();
+            });
+          }
+
+          void MediaPlaybackStatusService::pause() {
+            strand_.dispatch([this, self = this->shared_from_this()]() {
+              OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] pause()";
+            });
+          }
+
+          void MediaPlaybackStatusService::resume() {
+            strand_.dispatch([this, self = this->shared_from_this()]() {
+              OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] resume()";
+            });
+          }
+
+          void MediaPlaybackStatusService::fillFeatures(
+              aap_protobuf::service::control::message::ServiceDiscoveryResponse &response) {
+            OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] fillFeatures()";
+
+            auto *service = response.add_channels();
+            service->set_id(static_cast<uint32_t>(channel_->getId()));
+
+            auto *mediaPlaybackStatus = service->mutable_media_playback_service();
+            (void)mediaPlaybackStatus; // Suppress unused variable warning
+          }
+
+          void MediaPlaybackStatusService::onChannelOpenRequest(const aap_protobuf::service::control::message::ChannelOpenRequest &request) {
+            OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] onChannelOpenRequest()";
+            OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] Channel Id: " << request.service_id() << ", Priority: " << request.priority();
+
+            aap_protobuf::service::control::message::ChannelOpenResponse response;
+            const aap_protobuf::shared::MessageStatus status = aap_protobuf::shared::MessageStatus::STATUS_SUCCESS;
+            response.set_status(status);
+
+            auto promise = aasdk::channel::SendPromise::defer(strand_);
+            promise->then([]() {}, std::bind(&MediaPlaybackStatusService::onChannelError, this->shared_from_this(),
+                                             std::placeholders::_1));
+            channel_->sendChannelOpenResponse(response, std::move(promise));
+
+            channel_->receive(this->shared_from_this());
+          }
+
+          void MediaPlaybackStatusService::onMetadataUpdate(
+              const aap_protobuf::service::mediaplayback::message::MediaPlaybackMetadata &metadata) {
+            OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] Now playing: " << metadata.artist() << " - " << metadata.song();
+            song_ = metadata.song();
+            artist_ = metadata.artist();
+            album_ = metadata.album();
+            this->writeNowPlaying();
+            channel_->receive(this->shared_from_this());
+          }
+
+          void MediaPlaybackStatusService::onPlaybackUpdate(
+              const aap_protobuf::service::mediaplayback::message::MediaPlaybackStatus &playback) {
+            using State = aap_protobuf::service::mediaplayback::message::MediaPlaybackStatus;
+            const char *state = playback.state() == State::PLAYING ? "playing" :
+                                playback.state() == State::PAUSED ? "paused" : "stopped";
+            if (state_ != state) {
+              OPENAUTO_LOG(info) << "[MediaPlaybackStatusService] Playback state: " << state;
+              state_ = state;
+              this->writeNowPlaying();
+            }
+            channel_->receive(this->shared_from_this());
+          }
+
+          // key=value lines, written to a temp file and renamed so readers never see half a file
+          void MediaPlaybackStatusService::writeNowPlaying() {
+            const std::string tmp = std::string(NOWPLAYING_FILE) + ".tmp";
+            {
+              std::ofstream out(tmp, std::ios::trunc);
+              if (!out) {
+                OPENAUTO_LOG(error) << "[MediaPlaybackStatusService] Cannot write " << tmp;
+                return;
+              }
+              out << "state=" << state_ << "\n" << "song=" << song_ << "\n"
+                  << "artist=" << artist_ << "\n" << "album=" << album_ << "\n";
+            }
+            std::rename(tmp.c_str(), NOWPLAYING_FILE);
+          }
+
+          void MediaPlaybackStatusService::onChannelError(const aasdk::error::Error &e) {
+            OPENAUTO_LOG(error) << "[MediaPlaybackStatusService] onChannelError(): " << e.what();
+          }
+        }
+      }
+    }
+  }
+}

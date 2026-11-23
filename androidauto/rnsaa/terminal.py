@@ -15,10 +15,10 @@ KEYMAP = {
     "\x1bOD": ("knob_left", "turn"),
     "\x1b[C": ("knob_right", "turn"),  # Right arrow
     "\x1bOC": ("knob_right", "turn"),
-    "\x1b[A": ("up", "short"),         # Up arrow
-    "\x1bOA": ("up", "short"),
-    "\x1b[B": ("down", "short"),       # Down arrow
-    "\x1bOB": ("down", "short"),
+    "\x1b[A": ("key4", "short"),       # Up arrow
+    "\x1bOA": ("key4", "short"),
+    "\x1b[B": ("key5", "short"),       # Down arrow
+    "\x1bOB": ("key5", "short"),
     "\r": ("ok", "short"),             # Enter
     "\n": ("ok", "short"),
     "v": ("ok", "long"),
@@ -31,18 +31,23 @@ KEYMAP = {
     ">": ("next", "long"),
     " ": ("scan", "short"),
     "n": ("scan", "long"),
+    "a": ("as", "short"),
     "1": ("key1", "short"),
     "2": ("key2", "short"),
+    "3": ("key3", "short"),
+    "4": ("key4", "short"),
+    "5": ("key5", "short"),
+    "6": ("key6", "short"),
 }
 QUIT = ("q", "\x03")  # q, Ctrl+C
 
 HELP = """Keyboard test mode (stands in for the MFD buttons):
-  Left / Right   knob turn            Up / Down    up / down
-  Enter          knob press (select)  v            long knob press (assistant)
-  Backspace      EXIT (back)          h            long EXIT (home)
-  , / .          prev / next track    < / >        long prev / next (left / right)
-  Space          SCAN (play/pause)    n            long SCAN (navigation)
-  1 / 2          answer / end call    q            quit"""
+  Left / Right   right knob turn      Enter        right knob press (select)
+  Backspace      arrow next to NAVI   v / h        long knob press / long arrow (assistant / home)
+  , / .          < / > (track)        < / >        long < / > (left / right)
+  Space / n      SCAN / long SCAN     a            AS (assistant)
+  1 .. 6         preset keys          Up / Down    same as 4 / 5
+  q              quit"""
 
 
 def parse(chunk):
@@ -58,7 +63,12 @@ def parse(chunk):
                 i += size
                 break
         else:
-            i += 1  # unknown key or the rest of an unknown escape sequence
+            if chunk[i] == "\x1b":
+                # skip a whole unknown escape sequence (e.g. PageUp "\x1b[5~"), not just ESC
+                i += 1
+                while i < len(chunk) and not (chunk[i].isalpha() or chunk[i] == "~"):
+                    i += 1
+            i += 1
     return events
 
 
