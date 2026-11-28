@@ -5,6 +5,7 @@ While something plays, the two 8-character radio lines are sent every second:
   0x265  line 1 (artist)       0x267  line 2 (song)       0x665  6F200000300020  (FIS activation)
 Longer text scrolls one character per second. When nothing plays, nothing is sent and the
 RNS's own text (TV/VIDEO) comes back.
+With fixed lines (the default, [can] fis_nowplaying = false) those are sent all the time instead.
 """
 import logging
 import threading
@@ -49,11 +50,15 @@ def window(text, tick):
 
 
 class FisText:
-    """Sends the now-playing lines through send(can_id, payload) once per INTERVAL."""
+    """Sends the cluster lines through send(can_id, payload) once per INTERVAL.
 
-    def __init__(self, send, path=NOWPLAYING_FILE):
+    fixed=(line1, line2) shows that text all the time; fixed=None shows the phone's now playing.
+    """
+
+    def __init__(self, send, path=NOWPLAYING_FILE, fixed=None):
         self.send = send
         self.path = path
+        self.fixed = tuple(to_fis(line)[:WIDTH].center(WIDTH) for line in fixed) if fixed else None
         self._stop = threading.Event()
         self._shown = None
 
@@ -65,6 +70,12 @@ class FisText:
 
     def frames(self, tick):
         """CAN frames for this tick, [] when nothing plays."""
+        if self.fixed:
+            return [
+                (LINE1_ID, self.fixed[0].encode("ascii")),
+                (LINE2_ID, self.fixed[1].encode("ascii")),
+                (ACTIVATION_ID, ACTIVATION),
+            ]
         info = read_nowplaying(self.path)
         if info.get("state") != "playing" or not (info.get("song") or info.get("artist")):
             return []

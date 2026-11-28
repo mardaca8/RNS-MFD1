@@ -81,7 +81,8 @@ def run(cfg):
             log.warning("CAN %s not available (%s), retrying in %d s", cfg.can_channel, e, CAN_RETRY)
             time.sleep(CAN_RETRY)
     if cfg.fis:
-        FisText(link.send).start()
+        fixed = None if cfg.fis_nowplaying else (cfg.fis_line1, cfg.fis_line2)
+        FisText(link.send, fixed=fixed).start()
     threading.Event().wait()
 
 

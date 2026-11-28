@@ -136,3 +136,8 @@ class FisTest(unittest.TestCase):
             out.write("state=paused\nsong=Moscow Never Sleeps\nartist=DJ Smash\n")
         self.assertEqual(text.frames(11), [])
         self.assertEqual(fis.FisText(send=None, path=f.name + ".missing").frames(0), [])
+
+    def test_fixed_lines(self):
+        text = fis.FisText(send=None, path="/nonexistent", fixed=("Android", "Auto"))
+        self.assertEqual(text.frames(0), [
+            (0x265, b"ANDROID "), (0x267, b"  AUTO  "), (0x665, bytes.fromhex("6F200000300020"))])

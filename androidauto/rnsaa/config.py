@@ -30,7 +30,10 @@ DEFAULT_BUTTONS = {
 class Config:
     can_channel: str = "can0"
     long_press: float = 0.4
-    fis: bool = True  # song text on the instrument cluster
+    fis: bool = True  # text on the instrument cluster instead of TV/VIDEO
+    fis_nowplaying: bool = False  # artist / song from the phone instead of the fixed lines
+    fis_line1: str = "Android"
+    fis_line2: str = "Auto"
     buttons: dict = field(default_factory=lambda: dict(DEFAULT_BUTTONS))
 
 
@@ -53,6 +56,9 @@ def load(path):
     cfg.can_channel = ini.get("can", "channel", fallback=cfg.can_channel)
     cfg.long_press = ini.getfloat("can", "long_press", fallback=cfg.long_press)
     cfg.fis = ini.getboolean("can", "fis", fallback=cfg.fis)
+    cfg.fis_nowplaying = ini.getboolean("can", "fis_nowplaying", fallback=cfg.fis_nowplaying)
+    cfg.fis_line1 = ini.get("can", "fis_line1", fallback=cfg.fis_line1)
+    cfg.fis_line2 = ini.get("can", "fis_line2", fallback=cfg.fis_line2)
     if ini.has_section("buttons"):
         cfg.buttons.update(ini.items("buttons"))
     for action in cfg.buttons.values():

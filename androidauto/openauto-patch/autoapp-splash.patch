@@ -9,7 +9,7 @@
  #include <aasdk/USB/USBHub.hpp>
  #include <aasdk/USB/ConnectedAccessoriesEnumerator.hpp>
  #include <aasdk/USB/AccessoryModeQueryChain.hpp>
-@@ -229,9 +231,18 @@
+@@ -229,9 +231,19 @@
          OPENAUTO_LOG(debug) << "[AutoApp] MainWindow Day.";
      });
  
@@ -20,6 +20,7 @@
 +    // under the Android Auto video window, also between sessions. Keys still reach InputDevice,
 +    // which filters on the QApplication.
 +    QLabel splash;
++    splash.setObjectName("rnsSplash");  // QtVideoOutput hides it while video plays
 +    splash.setStyleSheet("background-color: black;");
 +    splash.setAlignment(Qt::AlignCenter);
 +    QPixmap splashImage("/etc/openauto/splash.png");

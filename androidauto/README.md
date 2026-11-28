@@ -59,10 +59,11 @@ NAVI, AUDIO, ♪, INFO, TIM, ↩, ⚑ and the left knob (volume, power) stay wit
 
 Change these in `/etc/rnsaa.conf`, then run `sudo systemctl restart rnsaa`.
 
-## Song on the instrument cluster
-While music plays, the cluster shows the artist (line 1) and song (line 2) in place of TV/VIDEO. Text longer than 8 characters scrolls.
-The patched openauto writes what the phone plays to `/dev/shm/openauto-nowplaying`, and rnsaa sends it on CAN the same way the Kodi skin does (0x265 / 0x267, plus 0x665 to activate the display).
-Turn it off with `fis = false` in `/etc/rnsaa.conf`.
+## Text on the instrument cluster
+The cluster shows `ANDROID` / `AUTO` in place of TV/VIDEO. rnsaa sends it on CAN the same way the Kodi skin does (0x265 / 0x267, plus 0x665 to activate the display).
+Change the lines with `fis_line1` / `fis_line2` (8 characters each), or turn it off with `fis = false`, in `/etc/rnsaa.conf`.
+
+With `fis_nowplaying = true` it shows the artist (line 1) and song (line 2) while music plays instead; longer text scrolls. The patched openauto writes what the phone plays to `/dev/shm/openauto-nowplaying`.
 
 ## Checking the buttons
 ```bash

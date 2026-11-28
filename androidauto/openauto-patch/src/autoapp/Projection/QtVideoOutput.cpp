@@ -150,6 +150,27 @@ static std::string decodeChain()
     return custom != nullptr && *custom != '\0' ? custom : "h264parse ! avdec_h264 max-threads=1 ! videoconvert";
 }
 
+// The black splash window from autoapp.cpp (RNS patch) would cover the video window, so it is
+// hidden while video plays and shown again between sessions.
+static void setSplashVisible(bool visible)
+{
+    for (QWidget* widget : QApplication::topLevelWidgets())
+    {
+        if (widget->objectName() == "rnsSplash")
+        {
+            OPENAUTO_LOG(info) << "[QtVideoOutput] Splash " << (visible ? "shown" : "hidden");
+            if (visible)
+            {
+                widget->showFullScreen();
+            }
+            else
+            {
+                widget->hide();
+            }
+        }
+    }
+}
+
 QtVideoOutput::QtVideoOutput(configuration::IConfiguration::Pointer configuration)
     : VideoOutput(std::move(configuration))
     , pipeline_(nullptr)
@@ -244,6 +265,7 @@ void QtVideoOutput::onStartPlayback()
     gst_object_unref(sink);
 
     videoWidget_->clearFrame();
+    setSplashVisible(false);
     videoWidget_->setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     QScreen* screen = QGuiApplication::primaryScreen();
     if (screen != nullptr)
@@ -307,6 +329,7 @@ void QtVideoOutput::onStopPlayback()
         videoWidget_->hide();
         videoWidget_->clearFocus();
     }
+    setSplashVisible(true);
     OPENAUTO_LOG(info) << "[QtVideoOutput] onStopPlayback() complete";
 }
 
