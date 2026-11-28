@@ -102,9 +102,9 @@ apply_openauto_patch() {
     cat "$SRC/openauto-patch/CMakeLists.rns.txt" >> $BUILD/openauto/CMakeLists.txt
     # No openauto/crankshaft menu: black splash (or /etc/openauto/splash.png) until Android Auto starts
     git -C $BUILD/openauto apply "$SRC/openauto-patch/autoapp-splash.patch" || { red "     autoapp splash patch failed. ❌"; exit 1; }
-    # Register the media status service: the phone's "now playing" goes to rnsaa for the cluster text
-    git -C $BUILD/openauto apply "$SRC/openauto-patch/media-status.patch" || { red "     media status patch failed. ❌"; exit 1; }
-    green "     openauto patches applied (low-latency video, splash, now playing). ✅"
+    # media-status.patch (phone's "now playing" for the cluster) must NOT be applied: with that
+    # service announced the phone sent no video at all (black screen, 2026-11-28)
+    green "     openauto patches applied (low-latency video, splash). ✅"
 }
 
 build_openauto() {

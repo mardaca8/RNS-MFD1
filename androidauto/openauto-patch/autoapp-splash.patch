@@ -9,26 +9,25 @@
  #include <aasdk/USB/USBHub.hpp>
  #include <aasdk/USB/ConnectedAccessoriesEnumerator.hpp>
  #include <aasdk/USB/AccessoryModeQueryChain.hpp>
-@@ -229,9 +231,19 @@
-         OPENAUTO_LOG(debug) << "[AutoApp] MainWindow Day.";
-     });
+@@ -233,6 +235,21 @@
+     mainWindow.setFixedSize(width, height);
+     mainWindow.adjustSize();
  
--    mainWindow.showFullScreen();
--    mainWindow.setFixedSize(width, height);
--    mainWindow.adjustSize();
-+    // RNS-MFD1: no openauto menu on the MFD. A splash (black, or /etc/openauto/splash.png) stays
-+    // under the Android Auto video window, also between sessions. Keys still reach InputDevice,
-+    // which filters on the QApplication.
-+    QLabel splash;
-+    splash.setObjectName("rnsSplash");  // QtVideoOutput hides it while video plays
-+    splash.setStyleSheet("background-color: black;");
-+    splash.setAlignment(Qt::AlignCenter);
++    // RNS-MFD1: no openauto menu on the MFD. A black cover (or /etc/openauto/splash.png) inside
++    // the main window hides it, also between sessions. It is a child widget on purpose: the main
++    // window must stay shown, a hidden or covering top-level window leaves the video black.
++    // Keys still reach InputDevice, which filters on the QApplication.
++    QLabel* splash = new QLabel(&mainWindow);
++    splash->setStyleSheet("background-color: black;");
++    splash->setAlignment(Qt::AlignCenter);
 +    QPixmap splashImage("/etc/openauto/splash.png");
 +    if (!splashImage.isNull()) {
-+        splash.setPixmap(splashImage.scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
++        splash->setPixmap(splashImage.scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 +    }
-+    splash.setFixedSize(width, height);
-+    splash.showFullScreen();
- 
++    splash->setGeometry(0, 0, width, height);
++    splash->raise();
++    splash->show();
++
      aasdk::usb::USBWrapper usbWrapper(usbContext);
      aasdk::usb::AccessoryModeQueryFactory queryFactory(usbWrapper, ioService);
+     aasdk::usb::AccessoryModeQueryChainFactory queryChainFactory(usbWrapper, ioService, queryFactory);

@@ -52,6 +52,11 @@ public:
     void setFrame(QImage frame)
     {
         std::lock_guard<std::mutex> lock(frameMutex_);
+        if (!frameLogged_)
+        {
+            frameLogged_ = true;
+            OPENAUTO_LOG(info) << "[QtVideoOutput] First frame decoded: " << frame.width() << "x" << frame.height();
+        }
         frame_ = std::move(frame);
         if (!updatePending_)
         {
@@ -64,6 +69,7 @@ public:
     {
         std::lock_guard<std::mutex> lock(frameMutex_);
         frame_ = QImage();
+        frameLogged_ = false;
     }
 
 protected:
@@ -91,6 +97,7 @@ private:
     std::mutex frameMutex_;
     QImage frame_;
     bool updatePending_ = false;
+    bool frameLogged_ = false;
 };
 
 static GstFlowReturn onNewSample(GstAppSink* sink, gpointer data)
@@ -148,27 +155,6 @@ static std::string decodeChain()
 {
     const char* custom = std::getenv("OPENAUTO_VIDEO_PIPELINE");
     return custom != nullptr && *custom != '\0' ? custom : "h264parse ! avdec_h264 max-threads=1 ! videoconvert";
-}
-
-// The black splash window from autoapp.cpp (RNS patch) would cover the video window, so it is
-// hidden while video plays and shown again between sessions.
-static void setSplashVisible(bool visible)
-{
-    for (QWidget* widget : QApplication::topLevelWidgets())
-    {
-        if (widget->objectName() == "rnsSplash")
-        {
-            OPENAUTO_LOG(info) << "[QtVideoOutput] Splash " << (visible ? "shown" : "hidden");
-            if (visible)
-            {
-                widget->showFullScreen();
-            }
-            else
-            {
-                widget->hide();
-            }
-        }
-    }
 }
 
 QtVideoOutput::QtVideoOutput(configuration::IConfiguration::Pointer configuration)
@@ -265,7 +251,6 @@ void QtVideoOutput::onStartPlayback()
     gst_object_unref(sink);
 
     videoWidget_->clearFrame();
-    setSplashVisible(false);
     videoWidget_->setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     QScreen* screen = QGuiApplication::primaryScreen();
     if (screen != nullptr)
@@ -329,7 +314,6 @@ void QtVideoOutput::onStopPlayback()
         videoWidget_->hide();
         videoWidget_->clearFocus();
     }
-    setSplashVisible(true);
     OPENAUTO_LOG(info) << "[QtVideoOutput] onStopPlayback() complete";
 }
 
